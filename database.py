@@ -15,18 +15,17 @@ def init_database():
     email TEXT NOT NULL,
     is_breached INTEGER,
     breach_count INTEGER,
-    checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
+    checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )'''
         
     )
     cursor.execute('''
-    CREATE TABLE IF NOT EXISTS passward_checks(
+    CREATE TABLE IF NOT EXISTS password_checks(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     password_hash TEXT NOT NULL,
     is_pwned INTEGER,
     pwned_count INTEGER,
-    checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
     conn.commit()
@@ -72,7 +71,7 @@ def get_email_history():
     conn.close()
     return result
 
-def get_passward_history():
+def get_password_history():
     """Retrieve all password checks from history"""
     conn = sqlite3.connect(DB_File)
     cursor = conn.cursor()

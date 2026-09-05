@@ -1,0 +1,366 @@
+<!DOCTYPE html> 
+<html lang="en"> 
+<head> 
+    <meta charset="UTF-8"> 
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+    <title>Password Leak Checker</title> 
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"> 
+</head> 
+<body> 
+    <div class="container"> 
+        <!-- Header --> 
+        <header class="header"> 
+            <h1> Password Leak Checker</h1> 
+            <p>Check if your email or password has been exposed in a data breach</p> 
+        </header> 
+        <!-- Tab Navigation --> 
+        <div class="tabs"> 
+            <button class="tab-button active" data-tab="email-tab">Email Checker</button> 
+            <button class="tab-button" data-tab="password-tab">Password Strength</button> 
+            <button class="tab-button" data-tab="history-tab">History</button> 
+        </div> 
+        <!-- Email Checker Tab --> 
+        <div id="email-tab" class="tab-content active"> 
+            <div class="card"> 
+                <h2>Check Email Breach Status</h2> 
+                <div class="form-group"> 
+                    <label for="email-input">Email Address</label> 
+                    <input  
+                        type="email"  
+                        id="email-input"  
+                        placeholder="your@email.com" 
+                        class="input-field" 
+                    > 
+                    <button id="check-email-btn" class="btn btn-primary">Check Email</button> 
+                </div> 
+                <div id="email-result" class="result hidden"> 
+                    <div id="email-status" class="status"></div> 
+                    <div id="email-details" class="details"></div> 
+                </div> 
+                <div id="email-loading" class="loading hidden"> 
+                    <div class="spinner"></div> 
+                    <p>Checking email...</p> 
+                </div> 
+                <div id="email-error" class="error hidden"></div> 
+            </div> 
+        </div> 
+        <!-- Password Strength Tab --> 
+        <div id="password-tab" class="tab-content"> 
+            <div class="card"> 
+                <h2>Check Password Strength & Breach Status</h2> 
+                <div class="form-group"> 
+                    <label for="password-input">Password</label> 
+                    <div class="password-input-group"> 
+                        <input  
+                            type="password"  
+                            id="password-input"  
+                            placeholder="Enter password to check" 
+                            class="input-field" 
+                        > 
+                        <button id="toggle-password-btn" class="toggle-btn"> </button> 
+                    </div> 
+                    <button id="check-password-btn" class="btn btn-primary">Check Password</button> 
+                </div> 
+                <div id="password-result" class="result hidden"> 
+                    <!-- Strength Meter --> 
+                    <div class="strength-section"> 
+                        <h3>Password Strength</h3> 
+                        <div class="strength-meter"> 
+                            <div id="strength-bar" class="strength-bar"></div> 
+                        </div> 
+                        <p id="strength-text" class="strength-text"></p> 
+                        <div id="strength-feedback" class="feedback-list"></div> 
+                    </div> 
+                    <!-- Breach Status --> 
+                    <div class="breach-section"> 
+                        <h3>Breach Status</h3> 
+                        <div id="breach-status" class="breach-status"></div> 
+                        <p id="breach-message" class="breach-message"></p> 
+                    </div> 
+                </div> 
+                <div id="password-loading" class="loading hidden"> 
+                    <div class="spinner"></div> 
+                    <p>Checking password...</p> 
+                </div> 
+                <div id="password-error" class="error hidden"></div> 
+            </div> 
+        </div> 
+        <!-- History Tab --> 
+        <div id="history-tab" class="tab-content"> 
+            <div class="card"> 
+                <h2>Check History</h2> 
+                <div class="history-section"> 
+                    <h3>Email Checks</h3> 
+                    <div id="email-history" class="history-list"></div> 
+                </div> 
+                <div class="history-section"> 
+                    <h3>Password Checks</h3> 
+                    <div id="password-history" class="history-list"></div> 
+                </div> 
+                <button id="clear-history-btn" class="btn btn-danger">Clear All History</button> 
+            </div> 
+        </div> 
+        <!-- Info Section --> 
+        <footer class="footer"> 
+            <h3>ℹ 
+            <ul> 
+ How It Works</h3> 
+                <li><strong>Email Checker:</strong> Uses HaveIBeenPwned API to check if your email appears in known breaches</li> 
+                <li><strong>Password Strength:</strong> Analyzes password complexity (length, characters, patterns)</li> 
+                <li><strong>K-Anonymity:</strong> Passwords are hashed locally; only first 5 hash characters are sent to the API for 
+                <li><strong>Local History:</strong> All checks are stored locally in your browser (no cloud storage)</li> 
+            </ul> 
+        </footer> 
+    </div>
+    <script> 
+        // API Base URL 
+        const API_BASE = 'http://localhost:5000/api'; 
+        // Tab switching 
+        document.querySelectorAll('.tab-button').forEach(button => { 
+            button.addEventListener('click', () => { 
+                const tabName = button.dataset.tab; 
+                // Remove active from all buttons and contents 
+                document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active')); 
+                document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); 
+                // Add active to clicked button and corresponding content 
+                button.classList.add('active'); 
+                document.getElementById(tabName).classList.add('active'); 
+            }); 
+        }); 
+        // Email Checker 
+        document.getElementById('check-email-btn').addEventListener('click', async () => { 
+            const email = document.getElementById('email-input').value.trim(); 
+            if (!email) { 
+                showEmailError('Please enter an email address'); 
+                return; 
+            } 
+            await checkEmail(email); 
+        }); 
+        async function checkEmail(email) { 
+            showEmailLoading(true); 
+            hideEmailError(); 
+            hideEmailResult(); 
+            try { 
+                const response = await fetch(`${API_BASE}/check-email`, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify({ email }) 
+                }); 
+                const data = await response.json(); 
+                if (!response.ok) { 
+                    showEmailError(data.error || 'Error checking email'); 
+                    return; 
+                } 
+                displayEmailResult(data); 
+                showEmailResult(); 
+            } catch (error) { 
+                showEmailError('Network error: ' + error.message); 
+            } finally { 
+                showEmailLoading(false); 
+            } 
+        } 
+        function displayEmailResult(data) { 
+            const statusEl = document.getElementById('email-status'); 
+            const detailsEl = document.getElementById('email-details'); 
+            if (data.is_breached) { 
+                statusEl.innerHTML = ` 
+                    <div class="status-badge breach"> BREACHED</div> 
+                    <p>This email has been found in <strong>${data.breach_count}</strong> breach(es)</p> 
+                `; 
+                let breachHTML = '<h4>Affected Breaches:</h4><ul>'; 
+                data.breach_details.forEach(breach => { 
+                    breachHTML += ` 
+                        <li> 
+                             <strong>${breach.name}</strong> (${breach.date}) 
+                             <br><small>${breach.description}</small> 
+                         </li> 
+                    `; 
+                }); 
+                breachHTML += '</ul>'; 
+                detailsEl.innerHTML = breachHTML; 
+            } else { 
+                statusEl.innerHTML = ` 
+                    <div class="status-badge safe"> SAFE</div> 
+                    <p>This email has not been found in any known breaches</p> 
+                `; 
+                detailsEl.innerHTML = '<p>Keep your email and password private to stay safe!</p>'; 
+            } 
+        } 
+        // Password Checker 
+        document.getElementById('check-password-btn').addEventListener('click', async () => { 
+            const password = document.getElementById('password-input').value; 
+            if (!password) { 
+                showPasswordError('Please enter a password'); 
+                return; 
+            } 
+            await checkPassword(password); 
+        }); 
+        document.getElementById('toggle-password-btn').addEventListener('click', () => { 
+            const input = document.getElementById('password-input'); 
+            const btn = document.getElementById('toggle-password-btn'); 
+            if (input.type === 'password') { 
+                input.type = 'text'; 
+                btn.textContent = ''; 
+            } else { 
+                input.type = 'password'; 
+                btn.textContent = ' '; 
+            } 
+        }); 
+        async function checkPassword(password) { 
+            showPasswordLoading(true); 
+            hidePasswordError(); 
+            hidePasswordResult(); 
+            try { 
+                const response = await fetch(`${API_BASE}/check-password`, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify({ password }) 
+                }); 
+                const data = await response.json(); 
+                if (!response.ok) { 
+                    showPasswordError(data.error || 'Error checking password'); 
+                    return; 
+                } 
+                displayPasswordResult(data); 
+                showPasswordResult(); 
+            } catch (error) { 
+                showPasswordError('Network error: ' + error.message); 
+            } finally { 
+                showPasswordLoading(false); 
+            } 
+        } 
+        function displayPasswordResult(data) { 
+            // Strength bar 
+            const strengthBar = document.getElementById('strength-bar'); 
+            const strengthText = document.getElementById('strength-text'); 
+            const strengthFeedback = document.getElementById('strength-feedback'); 
+            const strengthPercentage = (data.score / 6) * 100; 
+            strengthBar.style.width = strengthPercentage + '%'; 
+            strengthBar.style.backgroundColor = getStrengthColor(data.score); 
+            strengthText.textContent = data.strength; 
+            let feedbackHTML = ''; 
+            data.feedback.forEach(item => { 
+                feedbackHTML += `<li>${item}</li>`; 
+            }); 
+            strengthFeedback.innerHTML = feedbackHTML; 
+            // Breach status 
+            const breachStatus = document.getElementById('breach-status'); 
+            const breachMessage = document.getElementById('breach-message'); 
+            if (data.is_pwned) { 
+                breachStatus.innerHTML = `<div class="status-badge breach"> PWNED</div>`; 
+                breachMessage.textContent = data.message; 
+            } else { 
+                breachStatus.innerHTML = `<div class="status-badge safe"> SAFE</div>`; 
+                breachMessage.textContent = data.message; 
+            } 
+        } 
+        function getStrengthColor(score) { 
+            if (score >= 6) return '#2ecc71';  // Green 
+            if (score >= 5) return '#2ecc71';  // Green 
+            if (score >= 4) return '#f39c12';  // Orange 
+            if (score >= 3) return '#e67e22';  // Dark orange 
+            return '#e74c3c';  // Red 
+        } 
+        // History 
+        document.getElementById('clear-history-btn').addEventListener('click', async () => { 
+            if (confirm('Are you sure? This will delete all history.')) { 
+                try { 
+                    await fetch(`${API_BASE}/clear-history`, { method: 'POST' }); 
+                    loadHistory(); 
+                } catch (error) { 
+                    alert('Error clearing history: ' + error.message); 
+                } 
+            } 
+        }); 
+        async function loadHistory() { 
+            try { 
+                // Load email history 
+                const emailRes = await fetch(`${API_BASE}/history/emails`); 
+                const emailData = await emailRes.json(); 
+                const emailHistoryEl = document.getElementById('email-history'); 
+                if (emailData.history.length === 0) { 
+                    emailHistoryEl.innerHTML = '<p>No email checks yet</p>'; 
+                } else { 
+                    let html = '<ul>'; 
+                    emailData.history.forEach(item => { 
+                        const status = item.is_breached ? ' Breached' : ' Safe'; 
+                        html += ` 
+                            <li> 
+                                ${item.email} - ${status} (${item.breach_count} breaches) 
+                                <br><small>${new Date(item.checked_at).toLocaleString()}</small> 
+                            </li> 
+                        `; 
+                    }); 
+                    html += '</ul>'; 
+                    emailHistoryEl.innerHTML = html; 
+                } 
+                // Load password history 
+                const passRes = await fetch(`${API_BASE}/history/passwords`); 
+                const passData = await passRes.json(); 
+                const passHistoryEl = document.getElementById('password-history'); 
+                if (passData.history.length === 0) { 
+                    passHistoryEl.innerHTML = '<p>No password checks yet</p>'; 
+                } else { 
+                    let html = '<ul>'; 
+                    passData.history.forEach(item => { 
+                        const breached = item.is_pwned ? ` Pwned (${item.pwn_count}x)` : ' Safe'; 
+                        html += ` 
+                            <li> 
+                                ${item.password_hash} - ${item.password_strength} - ${breached} 
+                                <br><small>${new Date(item.checked_at).toLocaleString()}</small> 
+                            </li> 
+                        `; 
+                    }); 
+                    html += '</ul>'; 
+                    passHistoryEl.innerHTML = html; 
+                } 
+            } catch (error) { 
+                console.error('Error loading history:', error); 
+            } 
+        } 
+        // Load history when switching to history tab 
+        document.querySelectorAll('.tab-button').forEach(button => { 
+            button.addEventListener('click', () => { 
+                if (button.dataset.tab === 'history-tab') { 
+                    loadHistory(); 
+                } 
+            }); 
+        }); 
+        // Helper functions 
+        function showEmailLoading(show) { 
+            document.getElementById('email-loading').classList.toggle('hidden', !show); 
+        } 
+        function showEmailResult() { 
+            document.getElementById('email-result').classList.remove('hidden'); 
+        } 
+        function hideEmailResult() { 
+            document.getElementById('email-result').classList.add('hidden'); 
+        } 
+        function showEmailError(message) { 
+            const errorEl = document.getElementById('email-error'); 
+            errorEl.textContent = message; 
+            errorEl.classList.remove('hidden'); 
+        } 
+        function hideEmailError() { 
+            document.getElementById('email-error').classList.add('hidden'); 
+        } 
+        function showPasswordLoading(show) { 
+            document.getElementById('password-loading').classList.toggle('hidden', !show); 
+        } 
+        function showPasswordResult() { 
+            document.getElementById('password-result').classList.remove('hidden'); 
+        } 
+        function hidePasswordResult() { 
+            document.getElementById('password-result').classList.add('hidden'); 
+        } 
+        function showPasswordError(message) { 
+            const errorEl = document.getElementById('password-error'); 
+            errorEl.textContent = message; 
+            errorEl.classList.remove('hidden'); 
+        } 
+        function hidePasswordError() { 
+            document.getElementById('password-error').classList.add('hidden'); 
+        } 
+    </script> 
+</body> 
+</html>
